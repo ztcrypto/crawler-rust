@@ -8,6 +8,8 @@ use crate::{
     common::{command_translator::CommandTranslator, ws_client_internal::WSClientInternal},
     WSClient,
 };
+use nonzero_ext::nonzero;
+use std::{num::NonZeroU32};
 
 const WEBSOCKET_URL: &str = "wss://api.gateio.ws/ws/v4/";
 
@@ -15,18 +17,35 @@ const WEBSOCKET_URL: &str = "wss://api.gateio.ws/ws/v4/";
 ///
 /// * WebSocket API doc: <https://www.gate.io/docs/apiv4/ws/en/index.html>
 /// * Trading at <https://www.gate.io/en/trade/BTC_USDT>
+
+const UPLINK_LIMIT: (NonZeroU32, std::time::Duration) =
+    (nonzero!(10u32), std::time::Duration::from_secs(1));
+
+
 pub struct GateSpotWSClient {
     client: WSClientInternal<GateMessageHandler<'S'>>,
     translator: GateCommandTranslator<'S'>,
 }
 
-impl_new_constructor!(
-    GateSpotWSClient,
-    EXCHANGE_NAME,
-    WEBSOCKET_URL,
-    GateMessageHandler::<'S'> {},
-    GateCommandTranslator::<'S'> {}
-);
+impl GateSpotWSClient {
+    pub async fn new(tx: std::sync::mpsc::Sender<String>, url: Option<&str>) -> Self {
+        let real_url = match url {
+            Some(endpoint) => endpoint,
+            None => WEBSOCKET_URL,
+        };
+        GateSpotWSClient {
+            client: WSClientInternal::connect(
+                EXCHANGE_NAME,
+                real_url,
+                GateMessageHandler {},
+                Some(UPLINK_LIMIT),
+                tx,
+            )
+            .await,
+            translator: GateCommandTranslator {},
+        }
+    }
+}
 
 impl_trait!(Trade, GateSpotWSClient, subscribe_trade, "trades");
 #[rustfmt::skip]
